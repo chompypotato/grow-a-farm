@@ -119,7 +119,7 @@
       }
     }
 
-    function plantCropAt(index, type) {
+   function plantCropAt(index, type) {
   if (cropPlots[index].crop !== null) return false;
 
   const crop = cropTypes[type];
@@ -130,13 +130,27 @@
     const model = gltf.scene.clone();
     model.position.copy(cropPlots[index].position);
     model.position.y = 0;
-    model.scale.set(0.01, 0.01, 0.01);
+
+    // Auto-scale model to fit inside a 1.5 unit box
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    const maxDimension = Math.max(size.x, size.y, size.z);
+    const targetSize = 1.5;
+
+    if (maxDimension > 0) {
+      const scale = targetSize / maxDimension;
+      model.scale.setScalar(scale);
+    } else {
+      model.scale.setScalar(1);
+    }
+
     scene.add(model);
 
     cropPlots[index].crop = { mesh: model, type, harvested: false, ready: false };
 
     setTimeout(() => {
-      model.scale.set(0.02, 0.02, 0.02);
       cropPlots[index].crop.ready = true;
     }, crop.growTime);
 
@@ -154,6 +168,7 @@
 
   return true;
 }
+
 
 
     function firstEmptyPlot() {
