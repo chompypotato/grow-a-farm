@@ -130,13 +130,13 @@
     const model = gltf.scene.clone();
     model.position.copy(cropPlots[index].position);
     model.position.y = 0;
-    model.scale.set(1, 1, 1);
+    model.scale.set(0.01, 0.01, 0.01);
     scene.add(model);
 
     cropPlots[index].crop = { mesh: model, type, harvested: false, ready: false };
 
     setTimeout(() => {
-      model.scale.set(1.5, 1.5, 1.5);
+      model.scale.set(0.02, 0.02, 0.02);
       cropPlots[index].crop.ready = true;
     }, crop.growTime);
 
