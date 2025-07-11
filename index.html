@@ -47,7 +47,7 @@
     const loadedModels = {};
 
     
-    let coins = 50;
+    let coins = 150;
     let planterCount = 0;
     let harvesterCount = 0;
     let buyerCount = 0;
@@ -260,7 +260,7 @@
     const plotHelpers = [];
     function addPlotHelpers() {
       const squareGeom = new THREE.PlaneGeometry(1.5, 1.5);
-      const squareMat = new THREE.MeshBasicMaterial({ color: 0x999999, side: THREE.DoubleSide });
+      const squareMat = new THREE.MeshBasicMaterial({ color: 0x7b1d00, side: THREE.DoubleSide });
       for (const plot of cropPlots) {
         const helper = new THREE.Mesh(squareGeom, squareMat);
         helper.rotation.x = -Math.PI / 2;
