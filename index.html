@@ -1,1 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Grow a Farm - Idle Game</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 200px;
+    }
+    button { margin-top: 5px; display: block; width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div>Coins: <span id="coins">0</span></div>
+    <div>Crop Plots: <span id="plots">0</span></div>
+    <div>Planters: <span id="planters">0</span></div>
+    <div>Harvesters: <span id="harvesters">0</span></div>
+    <div>Buyers: <span id="buyers">0</span></div>
+    <hr />
+    <strong>Shop</strong>
+    <button onclick="buyCrop('carrot')">Buy Carrot (5 coins)</button>
+    <button onclick="buyCrop('pumpkin')">Buy Pumpkin (15 coins)</button>
+    <button onclick="buyCrop('corn')">Buy Corn (30 coins)</button>
+    <button onclick="buyCrop('wheat')">Buy Wheat (60 coins)</button>
+    <button onclick="buyCrop('tomato')">Buy Tomato (100 coins)</button>
+    <hr />
+    <strong>Hire Workers</strong>
+    <button onclick="hireWorker('planter')">Hire Planter (50 coins)</button>
+    <button onclick="hireWorker('harvester')">Hire Harvester (75 coins)</button>
+    <button onclick="hireWorker('buyer')">Hire Buyer (100 coins)</button>
+  </div>
+  <canvas id="farmCanvas"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script>
+    let coins = 50;
+    let planterCount = 0;
+    let harvesterCount = 0;
+    let buyerCount = 0;
+
+    const cropTypes = {
+      carrot:  { color: 0xff9933, cost: 5,  value: 10,  growTime: 3000 },
+      pumpkin: { color: 0xff6600, cost: 15, value: 30,  growTime: 6000 },
+      corn:    { color: 0xffff33, cost: 30, value: 60,  growTime: 10000 },
+      wheat:   { color: 0xe6c84c, cost: 60, value: 120, growTime: 15000 },
+      tomato:  { color: 0xff3333, cost: 100, value: 200, growTime: 20000 }
+    };
+
+    const coinsEl = document.getElementById('coins');
+    const plotsEl = document.getElementById('plots');
+    const plantersEl = document.getElementById('planters');
+    const harvestersEl = document.getElementById('harvesters');
+    const buyersEl = document.getElementById('buyers');
+
+    // Farm grid config: 5x5 plots spaced 3 units apart
+    const GRID_SIZE = 5;
+    const PLOT_SPACING = 3;
+
+    // Crop plots data
+    const cropPlots = [];
+
+    // Seeds waiting to be planted
+    const pendingSeeds = [];
+
+    function updateUI() {
+      coinsEl.textContent = coins;
+      plotsEl.textContent = cropPlots.filter(p => p.crop !== null).length;
+      plantersEl.textContent = planterCount;
+      harvestersEl.textContent = harvesterCount;
+      buyersEl.textContent = buyerCount;
+    }
+
+    function hireWorker(type) {
+      if (type === 'planter' && coins >= 50) {
+        coins -= 50;
+        planterCount++;
+      } else if (type === 'harvester' && coins >= 75) {
+        coins -= 75;
+        harvesterCount++;
+      } else if (type === 'buyer' && coins >= 100) {
+        coins -= 100;
+        buyerCount++;
+      } else {
+        alert('Not enough coins!');
+        return;
+      }
+      updateUI();
+    }
+
+    function buyCrop(type) {
+      const crop = cropTypes[type];
+      if (coins >= crop.cost) {
+        coins -= crop.cost;
+        pendingSeeds.push(type);
+        updateUI();
+      } else {
+        alert('Not enough coins!');
+      }
+    }
+
+    function initPlots() {
+      for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const x = (i % GRID_SIZE) * PLOT_SPACING - (PLOT_SPACING * (GRID_SIZE-1) / 2);
+        const z = Math.floor(i / GRID_SIZE) * PLOT_SPACING - (PLOT_SPACING * (GRID_SIZE-1) / 2);
+        cropPlots.push({ position: new THREE.Vector3(x, 0, z), crop: null });
+      }
+    }
+
+    function plantCropAt(index, type) {
+      if (cropPlots[index].crop !== null) return false;
+
+      const crop = cropTypes[type];
+      const geometry = new THREE.SphereGeometry(0.5, 16, 16);
+      const material = new THREE.MeshLambertMaterial({ color: crop.color });
+      const mesh = new THREE.Mesh(geometry, material);
+
+      mesh.position.copy(cropPlots[index].position);
+      mesh.position.y = 0.5;
+      scene.add(mesh);
+
+      cropPlots[index].crop = { mesh, type, harvested: false, ready: false };
+
+      setTimeout(() => {
+        mesh.scale.set(1.5, 1.5, 1.5);
+        cropPlots[index].crop.ready = true;
+      }, crop.growTime);
+
+      updateUI();
+      return true;
+    }
+
+    function firstEmptyPlot() {
+      for (let i = 0; i < cropPlots.length; i++) {
+        if (cropPlots[i].crop === null) return i;
+      }
+      return -1;
+    }
+
+    function autoPlant() {
+      if (planterCount === 0 || pendingSeeds.length === 0) return;
+
+      for (let i = 0; i < planterCount && pendingSeeds.length > 0; i++) {
+        const plotIndex = firstEmptyPlot();
+        if (plotIndex === -1) break;
+
+        const seedType = pendingSeeds.shift();
+        plantCropAt(plotIndex, seedType);
+      }
+      updateUI();
+    }
+
+    function autoHarvest() {
+      if (harvesterCount === 0) return;
+
+      let harvested = 0;
+      for (const plot of cropPlots) {
+        if (plot.crop && plot.crop.ready && !plot.crop.harvested && harvested < harvesterCount) {
+          coins += cropTypes[plot.crop.type].value;
+          plot.crop.harvested = true;
+          scene.remove(plot.crop.mesh);
+          plot.crop = null;
+          harvested++;
+        }
+      }
+      updateUI();
+    }
+
+  function buyersBuy() {
+  if (buyerCount === 0) return;
+
+  const cropKeys = Object.keys(cropTypes);
+
+  for (let i = 0; i < buyerCount; i++) {
+    // Pick a random crop
+    const cropKey = cropKeys[Math.floor(Math.random() * cropKeys.length)];
+    const crop = cropTypes[cropKey];
+
+    if (coins >= crop.cost) {
+      coins -= crop.cost;
+      pendingSeeds.push(cropKey);
+    }
+  }
+
+  updateUI();
+}
+
+
+    // Setup Three.js scene
+    const canvas = document.getElementById('farmCanvas');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(10, 10, 10).normalize();
+    scene.add(light);
+
+    const groundGeometry = new THREE.PlaneGeometry(50, 50);
+    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x55aa55 });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    camera.position.set(0, 30, 30);
+    camera.lookAt(0, 0, 0);
+
+    const plotHelpers = [];
+    function addPlotHelpers() {
+      const squareGeom = new THREE.PlaneGeometry(1.5, 1.5);
+      const squareMat = new THREE.MeshBasicMaterial({ color: 0x999999, side: THREE.DoubleSide });
+      for (const plot of cropPlots) {
+        const helper = new THREE.Mesh(squareGeom, squareMat);
+        helper.rotation.x = -Math.PI / 2;
+        helper.position.copy(plot.position);
+        helper.position.y = 0.01;
+        scene.add(helper);
+        plotHelpers.push(helper);
+      }
+    }
+
+    canvas.addEventListener('click', (event) => {
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const cropsMeshes = cropPlots.filter(p => p.crop !== null).map(p => p.crop.mesh);
+      const intersectsCrops = raycaster.intersectObjects(cropsMeshes);
+
+      if (intersectsCrops.length > 0) {
+        const mesh = intersectsCrops[0].object;
+        const plot = cropPlots.find(p => p.crop && p.crop.mesh === mesh);
+        if (plot.crop.ready && !plot.crop.harvested) {
+          coins += cropTypes[plot.crop.type].value;
+          plot.crop.harvested = true;
+          scene.remove(plot.crop.mesh);
+          plot.crop = null;
+          updateUI();
+          return;
+        }
+      }
+
+      const intersectsPlots = raycaster.intersectObjects(plotHelpers);
+      if (intersectsPlots.length > 0 && pendingSeeds.length > 0) {
+        const helperMesh = intersectsPlots[0].object;
+        const plotIndex = plotHelpers.indexOf(helperMesh);
+        if (plotIndex !== -1 && cropPlots[plotIndex].crop === null) {
+          const seedType = pendingSeeds.shift();
+          plantCropAt(plotIndex, seedType);
+        }
+      }
+    });
+
+    initPlots();
+    addPlotHelpers();
+    updateUI();
+
+    setInterval(() => {
+      autoPlant();
+      autoHarvest();
+      buyersBuy();
+    }, 2000);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
 
